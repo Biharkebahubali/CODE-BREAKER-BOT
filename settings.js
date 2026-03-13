@@ -10,7 +10,7 @@ const settings = {
   storeWriteInterval: 10000,
   description: "This is a bot for managing group commands and automating tasks.",
   version: "5.0.7",
-  updateZipUrl: "https://github.com/Biharkebahubali/CODE-BREAKER-BOT.git",
+  updateZipUrl: "https://github.com/Biharkebahubali/CODE-BREAKER-BOT/archive/refs/heads/main.zip",
 };
 
 module.exports = settings;
