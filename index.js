@@ -1,13 +1,13 @@
 /**
- * CODE_BREAKER - A WhatsApp Bot
- * Copyright (c) 2024 Professor
+ * CODE_BRRAKET - A WhatsApp Bot
+ * Copyright (c) 2025 Vikram_Laheri
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the MIT License.
  * 
  * Credits:
  * - Baileys Library by @adiwajshing
- * - Pair Code implementation inspired by TechGod143 & DGXEON
+ * - Pair Code implementation inspired by Vikram_Laheri & Bihar_Ke_Bahubali 
  */
 require('./settings')
 const { Boom } = require('@hapi/boom')
@@ -70,7 +70,7 @@ setInterval(() => {
     }
 }, 30_000) // check every 30 seconds
 
-let phoneNumber = "+919117119445"
+let phoneNumber = "user number with country code"
 let owner = JSON.parse(fs.readFileSync('./data/owner.json'))
 
 global.botname = "CODE_BREAKER"
@@ -161,7 +161,7 @@ async function startXeonBotInc() {
                             isForwarded: true,
                             forwardedNewsletterMessageInfo: {
                                 newsletterJid: '120363424488902820@newsletter',
-                                newsletterName: 'CODE_BREAKER',
+                                newsletterName: '   CODE_BREAKER',
                                 serverMessageId: -1
                             }
                         }
@@ -219,7 +219,7 @@ async function startXeonBotInc() {
         if (!!global.phoneNumber) {
             phoneNumber = global.phoneNumber
         } else {
-            phoneNumber = await question(chalk.bgBlack(chalk.greenBright(`Please type your WhatsApp number 😍\nFormat: 6281376552730 (without + or spaces) : `)))
+            phoneNumber = await question(chalk.bgBlack(chalk.greenBright(`Please type your WhatsApp number 😍\nFormat: 917384287404 (without + or spaces) : `)))
         }
 
         // Clean the phone number - remove any non-digit characters
@@ -280,12 +280,12 @@ async function startXeonBotInc() {
             }
 
             await delay(1999)
-            console.log(chalk.yellow(`\n\n                  ${chalk.bold.blue(`[ ${global.botname || 'CODE_BREAKER'} ]`)}\n\n`))
+            console.log(chalk.yellow(`\n\n                  ${chalk.bold.blue(`[ ${global.botname || 'Code_Breaker'} ]`)}\n\n`))
             console.log(chalk.cyan(`< ================================================== >`))
             console.log(chalk.magenta(`\n${global.themeemoji || '•'} YT CHANNEL: BIHAR_KE_BAHUBALI`))
-            console.log(chalk.magenta(`${global.themeemoji || '•'} GITHUB: bihar_ke_bahubali`))
+            console.log(chalk.magenta(`${global.themeemoji || '•'} GITHUB: Dexsam07`))
             console.log(chalk.magenta(`${global.themeemoji || '•'} WA NUMBER: ${owner}`))
-            console.log(chalk.magenta(`${global.themeemoji || '•'} CREDIT: CODE_BREAKER`))
+            console.log(chalk.magenta(`${global.themeemoji || '•'} CREDIT: Vikram_Laheri_`))
             console.log(chalk.green(`${global.themeemoji || '•'} 🤖 Bot Connected Successfully! ✅`))
             console.log(chalk.blue(`Bot Version: ${settings.version}`))
         }
