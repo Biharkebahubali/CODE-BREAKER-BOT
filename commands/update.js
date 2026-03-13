@@ -15,7 +15,6 @@ function run(cmd, timeout = 60000) {
             resolve((stdout || '').toString());
         });
         
-        // Timeout safeguard - agar command zyada time le to kill kar do
         setTimeout(() => {
             child.kill();
             reject(new Error(`Command timeout after ${timeout}ms: ${cmd.substring(0, 50)}...`));
@@ -35,6 +34,271 @@ async function hasGitRepo() {
     } catch {
         return false;
     }
+}
+
+// ============================================
+// UPDATE VIA GIT
+// ============================================
+async function updateViaGit() {
+    const oldRev = (await run('git rev-parse HEAD').catch(() => 'unknown')).trim();
+    await run('git fetch --all --prune');
+    const newRev = (await run('git rev-parse origin/main')).trim();
+    const alreadyUpToDate = oldRev === newRev;
+
+    const commits = alreadyUpToDate
+        ? ''
+        : await run(`git log --pretty=format:"%h %s (%an)" ${oldRev}..${newRev}`).catch(() => '');
+
+    const files = alreadyUpToDate
+        ? ''
+        : await run(`git diff --name-status ${oldRev} ${newRev}`).catch(() => '');
+
+    await run(`git reset --hard ${newRev}`);
+    await run('git clean -fd');
+
+    return { oldRev, newRev, alreadyUpToDate, commits, files };
+}
+
+// ============================================
+// DOWNLOAD FILE WITH REDIRECT HANDLING
+// ============================================
+function downloadFile(url, dest, visited = new Set()) {
+    return new Promise((resolve, reject) => {
+        try {
+            if (visited.has(url) || visited.size > 5) {
+                return reject(new Error('Too many redirects'));
+            }
+
+            visited.add(url);
+
+            const useHttps = url.startsWith('https://');
+            const client = useHttps ? require('https') : require('http');
+
+            const req = client.get(url, {
+                headers: {
+                    'User-Agent': 'CODE-BREAKER-Updater/1.0',
+                    'Accept': '*/*'
+                },
+                timeout: 30000
+            }, res => {
+
+                if ([301,302,303,307,308].includes(res.statusCode)) {
+                    const location = res.headers.location;
+                    if (!location) return reject(new Error(`HTTP ${res.statusCode} without Location`));
+
+                    const nextUrl = new URL(location, url).toString();
+                    res.resume();
+
+                    return downloadFile(nextUrl, dest, visited)
+                        .then(resolve)
+                        .catch(reject);
+                }
+
+                if (res.statusCode !== 200) {
+                    return reject(new Error(`HTTP ${res.statusCode}`));
+                }
+
+                const file = fs.createWriteStream(dest);
+
+                res.pipe(file);
+
+                file.on('finish', () => file.close(resolve));
+
+                file.on('error', err => {
+                    try { file.close(() => {}); } catch {}
+                    fs.unlink(dest, () => reject(err));
+                });
+
+            });
+
+            req.on('error', err => {
+                fs.unlink(dest, () => reject(err));
+            });
+
+            req.on('timeout', () => {
+                req.destroy();
+                reject(new Error('Download timeout'));
+            });
+
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
+
+// ============================================
+// EXTRACT ZIP FILE (Cross-platform)
+// ============================================
+async function extractZip(zipPath, outDir) {
+
+    if (process.platform === 'win32') {
+        const cmd = `powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${outDir.replace(/\\/g,'/')}' -Force"`;
+        await run(cmd);
+        return;
+    }
+
+    try {
+        await run('command -v unzip');
+        await run(`unzip -o '${zipPath}' -d '${outDir}'`);
+        return;
+    } catch {}
+
+    try {
+        await run('command -v 7z');
+        await run(`7z x -y '${zipPath}' -o'${outDir}'`);
+        return;
+    } catch {}
+
+    try {
+        await run('busybox unzip -h');
+        await run(`busybox unzip -o '${zipPath}' -d '${outDir}'`);
+        return;
+    } catch {}
+
+    throw new Error("No system unzip tool found");
+}
+
+// ============================================
+// COPY FILES RECURSIVELY (Async version)
+// ============================================
+async function copyRecursive(src, dest, ignore = [], relative = '', outList = []) {
+    if (!fs.existsSync(dest)) await fs.promises.mkdir(dest, { recursive: true });
+
+    const entries = await fs.promises.readdir(src, { withFileTypes: true });
+
+    for (const entry of entries) {
+        if (ignore.includes(entry.name)) continue;
+
+        const srcPath = path.join(src, entry.name);
+        const destPath = path.join(dest, entry.name);
+
+        if (entry.isDirectory()) {
+            await copyRecursive(
+                srcPath,
+                destPath,
+                ignore,
+                path.join(relative, entry.name),
+                outList
+            );
+        } else {
+            await fs.promises.copyFile(srcPath, destPath);
+            if (outList)
+                outList.push(path.join(relative, entry.name).replace(/\\/g, '/'));
+        }
+    }
+}
+
+// ============================================
+// UPDATE VIA ZIP DOWNLOAD
+// ============================================
+async function updateViaZip(sock, chatId, message, zipOverride) {
+
+    const zipUrl = (zipOverride || settings.updateZipUrl || process.env.UPDATE_ZIP_URL || '').trim();
+
+    if (!zipUrl)
+        throw new Error('No ZIP URL configured.');
+
+    const tmpDir = path.join(process.cwd(), 'tmp');
+    if (!fs.existsSync(tmpDir))
+        await fs.promises.mkdir(tmpDir, { recursive: true });
+
+    const zipPath = path.join(tmpDir, 'update.zip');
+    await downloadFile(zipUrl, zipPath);
+
+    const extractTo = path.join(tmpDir, 'update_extract');
+    if (fs.existsSync(extractTo))
+        await fs.promises.rm(extractTo, { recursive: true, force: true });
+
+    await extractZip(zipPath, extractTo);
+
+    const [root] = await fs.promises.readdir(extractTo).then(files => files.map(n => path.join(extractTo, n)));
+
+    const srcRoot = fs.existsSync(root) && (await fs.promises.lstat(root)).isDirectory() ? root : extractTo;
+
+    const ignore = ['node_modules', '.git', 'session', 'tmp', 'data', 'baileys_store.json'];
+    const copied = [];
+
+    await copyRecursive(srcRoot, process.cwd(), ignore, '', copied);
+
+    // Cleanup
+    try { await fs.promises.rm(extractTo, { recursive: true, force: true }); } catch {}
+    try { await fs.promises.rm(zipPath, { force: true }); } catch {}
+
+    return { copiedFiles: copied };
+}
+
+// ============================================
+// DELAY FUNCTION
+// ============================================
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ============================================
+// RESTART PROCESS - YAHAN HAI SABSE IMPORTANT CHANGE
+// ============================================
+async function restartProcess(sock, chatId, message) {
+    try {
+        await sock.sendMessage(chatId, { 
+            text: '✅ *UPDATE COMPLETE!* ✅\n\n' +
+                  '⚠️ *Bot automatically restart nahi ho raha*\n\n' +
+                  '👉 *Kripya hosting panel mein jakar MANUAL RESTART karein*\n' +
+                  '👉 Restart ke baad naye features kaam karenge\n\n' +
+                  '🔴 Bot abhi band ho raha hai...'
+        }, { quoted: message });
+    } catch {}
+    
+    console.log('🔄 Update completed. Exiting process - manual restart required.');
+    
+    await delay(3000);
+    process.exit(0);
+}
+
+// ============================================
+// MAIN UPDATE COMMAND
+// ============================================
+async function updateCommand(sock, chatId, message, zipOverride) {
+
+    const senderId = message.key.participant || message.key.remoteJid;
+    const isOwner = await isOwnerOrSudo(senderId, sock, chatId);
+
+    if (!message.key.fromMe && !isOwner) {
+        await sock.sendMessage(chatId, { text: '❌ Only bot owner or sudo can use .update' }, { quoted: message });
+        return;
+    }
+
+    try {
+        await sock.sendMessage(chatId, { text: '🔄 *Updating the bot, please wait...*\n⏱️ This may take a few minutes.' }, { quoted: message });
+
+        if (await hasGitRepo()) {
+            const { oldRev, newRev, alreadyUpToDate } = await updateViaGit();
+            
+            const summary = alreadyUpToDate ? `✅ Already up to date: ${newRev}` : `✅ Updated from ${oldRev} to ${newRev}`;
+            console.log('[update]', summary);
+            
+            await sock.sendMessage(chatId, { text: '📦 Installing dependencies...' }, { quoted: message });
+            await run('npm install --no-audit --no-fund');
+            
+        } else {
+            await sock.sendMessage(chatId, { text: '📥 Downloading update via ZIP...' }, { quoted: message });
+            await updateViaZip(sock, chatId, message, zipOverride);
+            
+            await sock.sendMessage(chatId, { text: '📦 Installing dependencies...' }, { quoted: message });
+            await run('npm install --no-audit --no-fund');
+        }
+
+        await restartProcess(sock, chatId, message);
+
+    } catch (err) {
+        console.error('Update failed:', err);
+        
+        await sock.sendMessage(chatId, { 
+            text: `❌ *Update Failed*\n\nError: ${String(err.message || err)}\n\nPlease try again or contact admin.` 
+        }, { quoted: message });
+    }
+}
+
+module.exports = updateCommand;    }
 }
 
 // ============================================
