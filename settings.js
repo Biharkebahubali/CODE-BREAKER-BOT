@@ -9,8 +9,8 @@ const settings = {
   maxStoreMessages: 20, 
   storeWriteInterval: 10000,
   description: "This is a bot for managing group commands and automating tasks.",
-  version: "3.0.7",
-  updateZipUrl: "https://github.com/Biharkebahubali/CODE-BREAKER-BOT",
+  version: "3.0.8",
+  updateZipUrl: "https://github.com/Biharkebahubali/CODE-BREAKER-BOT/archive/refs/heads/main.zip",
 };
 
 module.exports = settings;
