@@ -3,7 +3,7 @@ const settings = {
   author: '‎',
   botName: "CODE_BREAKER",
   botOwner: 'Vikram_Laheri', // Your name
-  ownerNumber: 'User Number', //Set your number here without + symbol, just add country code & number without any space
+  ownerNumber: '8825297632', //Set your number here without + symbol, just add country code & number without any space
   giphyApiKey: 'qnl7ssQChTdPjsKta2Ax2LMaGXz303tq',
   commandMode: "public",
   maxStoreMessages: 20, 

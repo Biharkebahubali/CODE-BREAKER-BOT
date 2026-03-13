@@ -70,7 +70,7 @@ setInterval(() => {
     }
 }, 30_000) // check every 30 seconds
 
-let phoneNumber = "User number"
+let phoneNumber = "+919117119445"
 let owner = JSON.parse(fs.readFileSync('./data/owner.json'))
 
 global.botname = "CODE_BREAKER"
@@ -160,7 +160,7 @@ async function startXeonBotInc() {
                             forwardingScore: 1,
                             isForwarded: true,
                             forwardedNewsletterMessageInfo: {
-                                newsletterJid: '120363161513685998@newsletter',
+                                newsletterJid: '120363424488902820@newsletter',
                                 newsletterName: 'CODE_BREAKER',
                                 serverMessageId: -1
                             }
@@ -269,7 +269,7 @@ async function startXeonBotInc() {
                         forwardingScore: 1,
                         isForwarded: true,
                         forwardedNewsletterMessageInfo: {
-                            newsletterJid: '120363161513685998@newsletter',
+                            newsletterJid: '120363424488902820@newsletter',
                             newsletterName: 'CODE_BREAKER',
                             serverMessageId: -1
                         }
