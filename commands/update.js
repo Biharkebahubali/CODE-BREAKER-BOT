@@ -1,7 +1,6 @@
 const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
 const settings = require('../settings');
 const isOwnerOrSudo = require('../lib/isOwner');
 
@@ -25,16 +24,90 @@ async function hasGitRepo() {
     }
 }
 
+// 🔥 TMP FOLDER AUTO CREATE (antidelete error ke liye)
+function ensureTmpFolder() {
+    try {
+        const tmpPath = path.join(process.cwd(), 'tmp');
+        if (!fs.existsSync(tmpPath)) {
+            fs.mkdirSync(tmpPath, { recursive: true });
+            console.log('✅ tmp folder auto created');
+        }
+    } catch (e) {
+        console.error('tmp folder create failed:', e);
+    }
+}
+
+// AUTO GIT SETUP
+async function setupGitRepo(sock, chatId, message) {
+    await sock.sendMessage(chatId, { text: '⚙️ Git repo nahi mila... Pehli baar auto setup kar raha hun...' }, { quoted: message });
+    
+    await run('git init');
+    await run('git remote add origin https://github.com/Biharkebahubali/CODE-BREAKER-BOT.git');
+    await run('git fetch --all --prune');
+    await run('git reset --hard origin/main');
+    await run('git clean -fd');
+    
+    ensureTmpFolder();   // ← tmp safe
+    
+    await sock.sendMessage(chatId, { text: '✅ Git + tmp setup complete! Latest version pull kar raha hun...' }, { quoted: message });
+}
+
 async function updateViaGit() {
     const oldRev = (await run('git rev-parse HEAD').catch(() => 'unknown')).trim();
     await run('git fetch --all --prune');
     const newRev = (await run('git rev-parse origin/main')).trim();
     const alreadyUpToDate = oldRev === newRev;
-    const commits = alreadyUpToDate ? '' : await run(`git log --pretty=format:"%h %s (%an)" ${oldRev}..${newRev}`).catch(() => '');
-    const files = alreadyUpToDate ? '' : await run(`git diff --name-status ${oldRev} ${newRev}`).catch(() => '');
+
     await run(`git reset --hard ${newRev}`);
     await run('git clean -fd');
-    return { oldRev, newRev, alreadyUpToDate, commits, files };
+    
+    ensureTmpFolder();   // ← har update ke baad tmp auto banega
+
+    return { newRev, alreadyUpToDate };
+}
+
+async function updateCommand(sock, chatId, message) {
+    const senderId = message.key.participant || message.key.remoteJid;
+    const isOwner = await isOwnerOrSudo(senderId, sock, chatId);
+    
+    if (!message.key.fromMe && !isOwner) {
+        await sock.sendMessage(chatId, { text: '❌ Only owner or sudo can use .update' }, { quoted: message });
+        return;
+    }
+
+    try {
+        await sock.sendMessage(chatId, { text: '🔄 Updating the bot, please wait…' }, { quoted: message });
+
+        // Har baar tmp folder ensure karo (background error rokne ke liye)
+        ensureTmpFolder();
+
+        if (!(await hasGitRepo())) {
+            await setupGitRepo(sock, chatId, message);
+        }
+
+        const { newRev, alreadyUpToDate } = await updateViaGit();
+        await run('npm install --no-audit --no-fund');
+
+        const status = alreadyUpToDate 
+            ? `✅ Already up to date!` 
+            : `✅ Bot successfully updated!`;
+
+        await sock.sendMessage(chatId, { 
+            text: `\( {status}\nVersion: \){newRev}\n\nRestarting... .ping check kar lena` 
+        }, { quoted: message });
+
+        await run('pm2 restart all').catch(() => {});
+        setTimeout(() => process.exit(1), 2000);
+
+    } catch (err) {
+        console.error('Update failed:', err);
+        await sock.sendMessage(chatId, { 
+            text: `❌ Update failed:\n${String(err.message).substring(0, 300)}` 
+        }, { quoted: message });
+    }
+}
+
+module.exports = updateCommand;    return { oldRev, newRev, alreadyUpToDate, commits, files };
 }
 
 function downloadFile(url, dest, visited = new Set()) {
